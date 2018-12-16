@@ -10,20 +10,22 @@ module Selda.PG
 
 import Prelude
 
+import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Data.Array (concat)
 import Data.Array as Array
+import Data.Either (Either)
 import Data.Exists (runExists)
 import Data.Newtype (unwrap)
 import Data.String (joinWith)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
-import Database.PostgreSQL (class FromSQLRow, class ToSQLRow, PoolConfiguration)
-import Database.PostgreSQL as PG
+import Database.PostgreSQL (class FromSQLRow, class ToSQLRow, PGError, PoolConfiguration)
+import Database.PostgreSQL.PG (hoistPG)
+import Database.PostgreSQL.PG as PG
 import Effect.Aff (Aff)
-import Effect.Aff.Class (liftAff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
-import Effect.Console (log)
 import Heterogeneous.Folding (class HFoldl, class HFoldlWithIndex, hfoldl)
 import Prim.RowList (kind RowList)
 import Prim.RowList as RL
@@ -36,12 +38,12 @@ import Selda.Table (class TableColumnNames, Table(..), tableColumnNames)
 import Type.Proxy (Proxy(..))
 import Type.Row (RLProxy(..))
 
-type MonadSelda a = ReaderT { pool ∷ PG.Pool } Aff a
+type MonadSelda a = ExceptT PGError (ReaderT { pool ∷ PG.Pool } Aff) a
 
-withPG ∷ PoolConfiguration → MonadSelda ~> Aff
+withPG ∷ ∀ a. PoolConfiguration → MonadSelda a -> Aff (Either PGError a)
 withPG dbconfig m = do
-  pool ← PG.newPool dbconfig
-  runReaderT m { pool }
+  pool ← liftEffect $ PG.newPool dbconfig
+  runReaderT (runExceptT m) { pool }
 
 insert_
   ∷ ∀ r rl tup
@@ -81,7 +83,7 @@ insert (Table { name }) xs = concat <$> traverse insert1 xs
     -- liftEffect $ log q_str
     -- liftEffect $ log $ show xTup
     { pool } ← ask
-    liftAff $ PG.withConnection pool \conn → do
+    hoistPG $ PG.withConnection pool \conn → do
       rows ← PG.query conn (PG.Query q_str) xTup
       pure $ map (tupleToRecord x) rows
 
@@ -99,7 +101,7 @@ query q = do
     q_str = showState st
   -- liftEffect $ log q_str
   { pool } ← ask
-  liftAff $ PG.withConnection pool \conn → do
+  hoistPG $ PG.withConnection pool \conn → do
     rows ← PG.query conn (PG.Query q_str) PG.Row0
     pure $ map (colsToPGHandler (Proxy ∷ Proxy s) res) rows
 
@@ -116,7 +118,7 @@ deleteFrom table@(Table { name }) pred = do
     q_str = "DELETE FROM " <> name <> " WHERE " <> pred_str
   -- liftEffect $ log q_str
   { pool } ← ask
-  liftAff $ PG.withConnection pool \conn → do
+  hoistPG $ PG.withConnection pool \conn → do
     PG.execute conn (PG.Query q_str) PG.Row0
 
 update
@@ -138,5 +140,5 @@ update table@(Table { name }) pred up = do
     q_str = "UPDATE " <> name <> " SET " <> vals <> " WHERE " <> pred_str
   -- liftEffect $ log q_str
   { pool } ← ask
-  liftAff $ PG.withConnection pool \conn → do
+  hoistPG $ PG.withConnection pool \conn → do
     PG.execute conn (PG.Query q_str) PG.Row0
