@@ -245,7 +245,8 @@ test' conn msg expected q = do
 
 dbconfig ∷ PoolConfiguration
 dbconfig = (defaultPoolConfiguration "purspg")
-  { user = Nothing
+  { user = Just "init"
   , port = Just 6432
+  , password = Just $ "qwerty"
   , idleTimeoutMillis = Just $ 1000
   }
