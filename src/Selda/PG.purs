@@ -21,10 +21,8 @@ import Data.String (joinWith)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Database.PostgreSQL (class FromSQLRow, class ToSQLRow, PGError, PoolConfiguration)
-import Database.PostgreSQL.PG (hoistPG)
 import Database.PostgreSQL.PG as PG
 import Effect.Aff (Aff)
-import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Heterogeneous.Folding (class HFoldl, class HFoldlWithIndex, hfoldl)
 import Prim.RowList (kind RowList)
@@ -83,7 +81,7 @@ insert (Table { name }) xs = concat <$> traverse insert1 xs
     -- liftEffect $ log q_str
     -- liftEffect $ log $ show xTup
     { pool } ← ask
-    hoistPG $ PG.withConnection pool \conn → do
+    PG.hoist $ PG.withConnection pool \conn → do
       rows ← PG.query conn (PG.Query q_str) xTup
       pure $ map (tupleToRecord x) rows
 
@@ -101,7 +99,7 @@ query q = do
     q_str = showState st
   -- liftEffect $ log q_str
   { pool } ← ask
-  hoistPG $ PG.withConnection pool \conn → do
+  PG.hoist $ PG.withConnection pool \conn → do
     rows ← PG.query conn (PG.Query q_str) PG.Row0
     pure $ map (colsToPGHandler (Proxy ∷ Proxy s) res) rows
 
@@ -118,7 +116,7 @@ deleteFrom table@(Table { name }) pred = do
     q_str = "DELETE FROM " <> name <> " WHERE " <> pred_str
   -- liftEffect $ log q_str
   { pool } ← ask
-  hoistPG $ PG.withConnection pool \conn → do
+  PG.hoist $ PG.withConnection pool \conn → do
     PG.execute conn (PG.Query q_str) PG.Row0
 
 update
@@ -140,5 +138,5 @@ update table@(Table { name }) pred up = do
     q_str = "UPDATE " <> name <> " SET " <> vals <> " WHERE " <> pred_str
   -- liftEffect $ log q_str
   { pool } ← ask
-  hoistPG $ PG.withConnection pool \conn → do
+  PG.hoist $ PG.withConnection pool \conn → do
     PG.execute conn (PG.Query q_str) PG.Row0
