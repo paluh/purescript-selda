@@ -24,35 +24,35 @@ import Type.Row (RLProxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 selectFrom
-  ∷ ∀ extra r s cols res
+  ∷ ∀ expr r s cols res
   . FromTable s r cols
   ⇒ Table r
-  → ({ | cols } → Query extra s { | res })
-  → FullQuery extra s { | res }
+  → ({ | cols } → Query expr s { | res })
+  → FullQuery expr s { | res }
 selectFrom table k = FullQuery $ crossJoin table >>= k
 
 selectFrom_
-  ∷ ∀ extra inner s resi reso
-  . FromSubQuery s inner extra resi
-  ⇒ FullQuery extra (Inner s) { | inner }
-  → ({ | resi } → Query extra s { | reso })
-  → FullQuery extra s { | reso }
+  ∷ ∀ expr inner s resi reso
+  . FromSubQuery s inner expr resi
+  ⇒ FullQuery expr (Inner s) { | inner }
+  → ({ | resi } → Query expr s { | reso })
+  → FullQuery expr s { | reso }
 selectFrom_ iq k = FullQuery $ crossJoin_ iq >>= k
 
-restrict ∷ ∀ extra s. Col extra s Boolean → Query extra s Unit
+restrict ∷ ∀ expr s. Col expr s Boolean → Query expr s Unit
 restrict (Col e) = Query $ modify_ \st → st { restricts = e : st.restricts }
 
-crossJoin ∷ ∀ extra s r res. FromTable s r res ⇒ Table r → Query extra s { | res }
+crossJoin ∷ ∀ expr s r res. FromTable s r res ⇒ Table r → Query expr s { | res }
 crossJoin table = do
   { res, sql } ← fromTable table
   Query $ modify_ $ \st → st { sources = Product sql : st.sources }
   pure res
 
 crossJoin_
-  ∷ ∀ extra inner s res
-  . FromSubQuery s inner extra res
-  ⇒ FullQuery extra (Inner s) { | inner }
-  → Query extra s { | res }
+  ∷ ∀ expr inner s res
+  . FromSubQuery s inner expr res
+  ⇒ FullQuery expr (Inner s) { | inner }
+  → Query expr s { | res }
 crossJoin_ iq = do
   let q = unwrap iq
   { res, sql } ← fromSubQuery q
@@ -60,42 +60,42 @@ crossJoin_ iq = do
   pure res
 
 aggregate
-  ∷ ∀ extra s aggr res
+  ∷ ∀ expr s aggr res
   . HMap UnAggr { | aggr } { | res }
-  ⇒ Query extra s { | aggr }
-  → Query extra s { | res }
+  ⇒ Query expr s { | aggr }
+  → Query expr s { | res }
 aggregate q = map (hmap UnAggr) q
 
-groupBy ∷ ∀ extra s a. Col extra s a → Query extra s (Aggr extra s a)
+groupBy ∷ ∀ expr s a. Col expr s a → Query expr s (Aggr expr s a)
 groupBy col@(Col e) = do
   Query $ modify_ \st → st { aggr = st.aggr <> [mkExists e] }
   pure $ Aggr col
 
 groupBy'
-  ∷ ∀ extra i o s
-  . GetCols i extra
+  ∷ ∀ expr i o s
+  . GetCols i expr
   ⇒ HMap WrapWithAggr { | i } { | o }
   ⇒ { | i }
-  → Query extra s { | o }
+  → Query expr s { | o }
 groupBy' i = do
-  let aggr = map snd $ getCols (RProxy ∷ RProxy extra) i
+  let aggr = map snd $ getCols (RProxy ∷ RProxy expr) i
   Query $ modify_ \st → st { aggr = st.aggr <> aggr }
   pure $ hmap WrapWithAggr i
 
-orderBy ∷ ∀ extra s a. Order → Aggr extra s a → Query extra s Unit
+orderBy ∷ ∀ expr s a. Order → Aggr expr s a → Query expr s Unit
 orderBy order (Aggr (Col e)) =
   Query $ modify_ \st → st { order = st.order <> [Tuple order $ mkExists e] }
 
-limit ∷ ∀ extra s. Int → Query extra s Unit
+limit ∷ ∀ expr s. Int → Query expr s Unit
 limit i = Query $ modify_ $ _ { limit = Just i }
 
 leftJoin
-  ∷ ∀ extra r s res mres
+  ∷ ∀ expr r s res mres
   . FromTable s r res
   ⇒ HMap WrapWithMaybe { | res } { | mres }
   ⇒ Table r
-  → ({ | res } → Col extra s Boolean)
-  → Query extra s { | mres }
+  → ({ | res } → Col expr s Boolean)
+  → Query expr s { | mres }
 leftJoin table on = do
   { res, sql } ← fromTable table
   let Col e = on res
@@ -109,12 +109,12 @@ leftJoin table on = do
 -- | return previously mapped record with each value in Col wrapped in Maybe
 -- | (because LEFT JOIN can return null for each column)
 leftJoin_
-  ∷ ∀ extra s res mres inner
-  . FromSubQuery s inner extra res
+  ∷ ∀ expr s res mres inner
+  . FromSubQuery s inner expr res
   ⇒ HMap WrapWithMaybe { | res } { | mres }
-  ⇒ ({ | res } → Col extra s Boolean)
-  → FullQuery extra (Inner s) { | inner }
-  → Query extra s { | mres }
+  ⇒ ({ | res } → Col expr s Boolean)
+  → FullQuery expr (Inner s) { | inner }
+  → Query expr s { | mres }
 leftJoin_ on iq = do
   let q = unwrap iq
   { res, sql } ← fromSubQuery q
@@ -142,37 +142,37 @@ instance tableToColsI
 
 data WrapWithMaybe = WrapWithMaybe
 instance wrapWithMaybeLeaveMaybe
-    ∷ Mapping WrapWithMaybe (Col extra s (Maybe a)) (Col extra s (Maybe a))
+    ∷ Mapping WrapWithMaybe (Col expr s (Maybe a)) (Col expr s (Maybe a))
   where
   mapping _ = identity
 else instance wrapWithMaybeInstance
-    ∷ Mapping WrapWithMaybe (Col extra s a) (Col extra s (Maybe a))
+    ∷ Mapping WrapWithMaybe (Col expr s a) (Col expr s (Maybe a))
   where
-  mapping _ = (unsafeCoerce ∷ Col extra s a → Col extra s (Maybe a))
+  mapping _ = (unsafeCoerce ∷ Col expr s a → Col expr s (Maybe a))
 
-subQueryAlias ∷ ∀ extra s. Query extra s Alias
+subQueryAlias ∷ ∀ expr s. Query expr s Alias
 subQueryAlias = do
   id ← freshId
   pure $ "sub_q" <> show id
 
-class FromSubQuery s inner extra res | s inner extra → res where
+class FromSubQuery s inner expr res | s inner expr → res where
   fromSubQuery
-    ∷ Query extra (Inner s) { | inner }
-    → Query extra s { res ∷ { | res } , sql ∷ SQL extra, alias ∷ Alias }
+    ∷ Query expr (Inner s) { | inner }
+    → Query expr s { res ∷ { | res } , sql ∷ SQL expr, alias ∷ Alias }
 
 instance fromSubQueryI 
     ∷ ( HMap OuterCols { | inner } { | res0 }
-      , GetCols res0 extra
+      , GetCols res0 expr
       , HMapWithIndex SubQueryResult { | res0 } { | res }
       )
-    ⇒ FromSubQuery s inner extra res
+    ⇒ FromSubQuery s inner expr res
   where
   fromSubQuery q = do
     let (Tuple innerRes st) = runQuery q
     let res0 = hmap OuterCols innerRes
     alias ← subQueryAlias
     let res = createSubQueryResult alias res0
-    pure $ { res, sql: SubQuery alias $ st { cols = getCols (RProxy ∷ RProxy extra) res0 }, alias }
+    pure $ { res, sql: SubQuery alias $ st { cols = getCols (RProxy ∷ RProxy expr) res0 }, alias }
 
 -- | Outside of the subquery, every returned col (in SELECT ...) 
 -- | (no matter if it's just a column of some table or expression or function or ...)
@@ -198,7 +198,7 @@ createSubQueryResult = hmapWithIndex <<< SubQueryResult
 data SubQueryResult = SubQueryResult Alias
 instance subQueryResultInstance
     ∷ IsSymbol sym
-    ⇒ MappingWithIndex SubQueryResult (SProxy sym) (Col extra s a) (Col extra s a)
+    ⇒ MappingWithIndex SubQueryResult (SProxy sym) (Col expr s a) (Col expr s a)
   where
-  mappingWithIndex (SubQueryResult namespace) sym (Col _) = 
+  mappingWithIndex (SubQueryResult namespace) sym (Col _) =
     Col $ EColumn $ Column { namespace, name: reflectSymbol sym }

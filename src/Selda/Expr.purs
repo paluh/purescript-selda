@@ -10,13 +10,13 @@ import Prim.RowList (kind RowList)
 import Selda.Table (Column, showColumn)
 import Type.Prelude (SProxy(..))
 
-type Literal extra a = Variant
+type Literal expr a = Variant
   ( boolean ∷ { value ∷ Boolean, leibniz ∷ Boolean ~ a }
   , string ∷ { value ∷ String, leibniz ∷ String ~ a }
   , int ∷ { value ∷ Int, leibniz ∷ Int ~ a }
   , null ∷ Exists (None a)
-  , just ∷ Exists (Some extra a)
-  | extra
+  , just ∷ Exists (Some expr a)
+  | expr
   )
 
 _boolean = SProxy ∷ SProxy "boolean"
@@ -25,7 +25,7 @@ _int = SProxy ∷ SProxy "int"
 _null = SProxy ∷ SProxy "null"
 _just = SProxy ∷ SProxy "just"
 
-data Some extra a b = Some (Literal extra b) (Maybe b ~ a)
+data Some expr a b = Some (Literal expr b) (Maybe b ~ a)
 
 data None a b = None (Maybe b ~ a)
 
@@ -34,19 +34,19 @@ data BinOp i o
   | Gt (Boolean ~ o)
   | Eq (Boolean ~ o)
 
-data Expr extra o
+data Expr expr o
   = EColumn (Column o)
-  | ELit (Literal extra o)
-  | EBinOp (Exists (BinExp extra o))
-  | EFn (Fn extra o)
+  | ELit (Literal expr o)
+  | EBinOp (Exists (BinExp expr o))
+  | EFn (Fn expr o)
 
-data BinExp extra o i = BinExp (BinOp i o) (Expr extra i) (Expr extra i)
+data BinExp expr o i = BinExp (BinOp i o) (Expr expr i) (Expr expr i)
 
-data Fn extra o
-  = FnMax (Expr extra o)
-  | FnCount (Exists (Expr extra)) (String ~ o)
+data Fn expr o
+  = FnMax (Expr expr o)
+  | FnCount (Exists (Expr expr)) (String ~ o)
 
-showLiteralBase ∷ ∀ a extra. (Variant extra → String) → Literal extra a → String
+showLiteralBase ∷ ∀ a expr. (Variant expr → String) → Literal expr a → String
 showLiteralBase showExtra = showExtra
   # on _boolean (\{ value } → show value)
   # on _string (\{ value } → "'" <> value <> "'")

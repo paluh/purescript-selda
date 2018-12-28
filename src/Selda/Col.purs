@@ -17,8 +17,8 @@ import Selda.Table (Alias, Column)
 import Type.Prelude (RProxy)
 import Type.Proxy (Proxy)
 
-newtype Col extra s a = Col (Expr extra a)
-derive instance newtypeCol ∷ Newtype (Col extra s a) _
+newtype Col expr s a = Col (Expr expr a)
+derive instance newtypeCol ∷ Newtype (Col expr s a) _
 
 showCol ∷ ∀ s a. Col () s a → String
 showCol = unwrap >>> showExpr

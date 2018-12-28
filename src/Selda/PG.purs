@@ -43,6 +43,7 @@ import Selda.Query (class FromTable)
 import Selda.Query (selectFrom) as Query
 import Selda.Query.Type (FullQuery, Query, runQuery)
 import Selda.Table (class TableColumnNames, Table(..), tableColumnNames)
+import Type.Prelude (RProxy(..))
 import Type.Proxy (Proxy(..))
 import Type.Row (RLProxy(..))
 
@@ -125,15 +126,15 @@ insert (Table { name }) xs = concat <$> traverse insert1 xs
 query
   ∷ ∀ o i tup s
   . ColsToPGHandler s i tup o
-  ⇒ GetCols i
+  ⇒ GetCols () i
   ⇒ FromSQLRow tup
-  ⇒ FullQuery s (Record i)
+  ⇒ FullQuery () s (Record i)
   → MonadSelda (Array (Record o))
 query q = do
   let
     (Tuple res st') = runQuery $ unwrap q
-    st = st' { cols = getCols res }
-    q_str = showState st
+    st = st' { cols = getCols (RProxy ∷ RProxy ()) res }
+    q_str = showState showExpr st
   rows ← pgQuery (PostgreSQL.Query q_str) PostgreSQL.Row0
   pure $ map (colsToPGHandler (Proxy ∷ Proxy s) res) rows
 
