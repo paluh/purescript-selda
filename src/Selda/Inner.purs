@@ -10,6 +10,6 @@ data Inner s
 
 data OuterCols = OuterCols
 instance outercolsInstance
-    ∷ Mapping OuterCols (Col (Inner s) a) (Col s a)
+    ∷ Mapping OuterCols (Col expr (Inner s) a) (Col expr s a)
   where
   mapping _ (Col e) = Col e

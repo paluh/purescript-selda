@@ -8,39 +8,41 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
 import Data.Tuple (Tuple(..))
+import Data.Variant (inj)
 import Heterogeneous.Folding (class FoldingWithIndex, class HFoldlWithIndex, hfoldlWithIndex)
 import Heterogeneous.Mapping (class HMap, class Mapping, hmap)
 import Prim.RowList (kind RowList)
-import Selda.Expr (Expr(..), Literal(..), None(..), Some(..), showExpr)
+import Selda.Expr (Expr(..), Literal, None(..), Some(..), _boolean, _int, _just, _null, _string, showExpr)
 import Selda.Table (Alias, Column)
+import Type.Prelude (RProxy)
 import Type.Proxy (Proxy)
 
-newtype Col s a = Col (Expr a)
-derive instance newtypeCol ∷ Newtype (Col s a) _
+newtype Col extra s a = Col (Expr extra a)
+derive instance newtypeCol ∷ Newtype (Col extra s a) _
 
-showCol ∷ ∀ s a. Col s a → String
+showCol ∷ ∀ s a. Col () s a → String
 showCol = unwrap >>> showExpr
 
 class Lit a where
-  lit ∷ ∀ s. a → Col s a
-  literal ∷ a → Literal a
+  lit ∷ ∀ expr s. a → Col expr s a
+  literal ∷ ∀ expr. a → Literal expr a
 
 instance litBoolean ∷ Lit Boolean where
-  literal x = LBoolean x identity
+  literal value = inj _boolean { value, leibniz: identity }
   lit x = Col $ ELit $ literal x
 
 instance litString ∷ Lit String where
-  literal x = LString x identity
+  literal value = inj _string { value, leibniz: identity }
   lit x = Col $ ELit $ literal x
 
 instance litInt ∷ Lit Int where
-  literal x = LInt x identity
+  literal value = inj _int { value, leibniz: identity }
   lit x = Col $ ELit $ literal x
 
 instance litMaybe ∷ Lit a ⇒ Lit (Maybe a) where
   literal = case _ of
-    Nothing → LNull $ mkExists $ None identity
-    Just l → LJust $ mkExists $ Some (literal l) identity
+    Nothing → inj _null $ mkExists $ None identity
+    Just l → inj _just $ mkExists $ Some (literal l) identity
   lit x = Col $ ELit $ literal x
 
 -- | ```purescript
@@ -55,30 +57,30 @@ instance toColsI ∷ HMap (ToCols_ s) { | i } { | o } ⇒ ToCols s i o where
   toCols _ = hmap (ToCols_ ∷ ToCols_ s)
 
 data ToCols_ s = ToCols_
-instance toColsMapping ∷ Mapping (ToCols_ s) (Column a) (Col s a) where
+instance toColsMapping ∷ Mapping (ToCols_ s) (Column a) (Col expr s a) where
   mapping _ col = Col $ EColumn col
 
 -- | For record { n1 ∷ Col s String, n2 ∷ Col s String, id ∷ Col s Int }
 -- | → [(id, Expr Int), (n1, Expr String), (n2, Expr String)]
 -- | → [(id, Exists Expr), (n1, Exists Expr), (n2, Exists Expr)]
-class GetCols r where
-  getCols ∷ { | r } → Array (Tuple Alias (Exists Expr))
-instance getcols 
-    ∷ HFoldlWithIndex ExtractCols 
-      (Array (Tuple String (Exists Expr)))
+class GetCols r expr where
+  getCols ∷ RProxy expr → { | r } → Array (Tuple Alias (Exists (Expr expr)))
+instance getcols
+    ∷ HFoldlWithIndex (ExtractCols expr)
+      (Array (Tuple String (Exists (Expr expr))))
       { | r }
-      (Array (Tuple String (Exists Expr))) 
-    ⇒ GetCols r
+      (Array (Tuple String (Exists (Expr expr)))) 
+    ⇒ GetCols r expr
   where
-  getCols r = hfoldlWithIndex ExtractCols ([] ∷ Array (Tuple String (Exists Expr))) r
+  getCols _ r = hfoldlWithIndex (ExtractCols ∷ ExtractCols expr) ([] ∷ Array (Tuple String (Exists (Expr expr)))) r
 
-data ExtractCols = ExtractCols
-instance extractcols 
-    ∷ IsSymbol sym 
-    ⇒ FoldingWithIndex ExtractCols (SProxy sym) 
-      (Array (Tuple String (Exists Expr)))
-      (Col s a) 
-      (Array (Tuple String (Exists Expr)))
+data ExtractCols (expr ∷ #Type) = ExtractCols
+instance extractcols
+    ∷ IsSymbol sym
+    ⇒ FoldingWithIndex (ExtractCols expr) (SProxy sym)
+      (Array (Tuple String (Exists (Expr expr))))
+      (Col expr s a)
+      (Array (Tuple String (Exists (Expr expr))))
   where
-  foldingWithIndex ExtractCols sym acc (Col e) = 
+  foldingWithIndex ExtractCols sym acc (Col e) =
     Tuple (reflectSymbol (SProxy ∷ SProxy sym)) (mkExists e) : acc

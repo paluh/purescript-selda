@@ -8,52 +8,52 @@ import Data.Exists (Exists, runExists)
 import Data.Maybe (Maybe(..))
 import Data.String (joinWith)
 import Data.Tuple (Tuple(..))
-import Selda.Expr (Expr, showExpr)
+import Selda.Expr (Expr)
 import Selda.Query.Type (GenState, Order(..), SQL(..), Source(..))
 import Selda.Table (Alias)
 
-showState ∷ GenState → String
-showState { cols, sources, restricts, aggr, order, limit } = 
-  showCols cols
-    <> showSources sources
-    <> showRestricts restricts
-    <> showGrouping aggr
-    <> showOrdering order
+showState ∷ ∀ extra. (∀ a. Expr extra a → String) → GenState extra → String
+showState showExpr { cols, sources, restricts, aggr, order, limit } = 
+  showCols showExpr cols
+    <> showSources showExpr sources
+    <> showRestricts showExpr restricts
+    <> showGrouping showExpr aggr
+    <> showOrdering showExpr order
     <> showLimit limit
 
-showCols ∷ Array (Tuple Alias (Exists Expr)) → String
-showCols = case _ of
+showCols ∷ ∀ extra. (∀ a. Expr extra a → String) → Array (Tuple Alias (Exists (Expr extra))) → String
+showCols showExpr = case _ of
   [] → ""
-  xs → "SELECT " <> (joinWith ", " $ map showAliasedCol xs)
+  xs → "SELECT " <> (joinWith ", " $ map (showAliasedCol showExpr) xs)
 
-showSources ∷ Array Source → String
-showSources sources = case Array.uncons $ reverse sources of
+showSources ∷ ∀ extra. (∀ a. Expr extra a → String) → Array (Source extra) → String
+showSources showExpr sources = case Array.uncons $ reverse sources of
   Nothing → ""
   Just { head, tail } → " FROM "
-    <> foldl (\acc x → acc <> sepFor x <> showSource x) (showSource head) tail
+    <> foldl (\acc x → acc <> sepFor x <> showSource showExpr x) (showSource showExpr head) tail
   -- Just { head: h@(Product t), tail } →
   --   " FROM " <> foldl (\acc x → acc <> sepFor x <> showSource x) (showSource h) tail
   -- Just { head: LeftJoin t _, tail } →
   --   -- join on the first place, drop it and interpret as Product
   --   showSources $ Product t : tail
 
-showRestricts ∷ Array (Expr Boolean) → String
-showRestricts = case _ of
+showRestricts ∷ ∀ extra. (∀ a. Expr extra a → String) → Array (Expr extra Boolean) → String
+showRestricts showExpr = case _ of
   [] → ""
   xs → " WHERE " <> (joinWith " AND " $ map (\e → "(" <> showExpr e <> ")") xs)
 
-showGrouping ∷ Array (Exists Expr) → String
-showGrouping = case _ of
+showGrouping ∷ ∀ extra. (∀ a. Expr extra a → String) → Array (Exists (Expr extra)) → String
+showGrouping showExpr = case _ of
   [] → ""
   xs → " GROUP BY " <> (joinWith ", " $ map (runExists showExpr) xs)
 
-showOrdering ∷ Array (Tuple Order (Exists Expr)) → String
-showOrdering = case _ of
+showOrdering ∷ ∀ extra. (∀ a. Expr extra a → String) → Array (Tuple Order (Exists (Expr extra))) → String
+showOrdering showExpr = case _ of
   [] → ""
-  xs → " ORDER BY " <> (joinWith ", " $ map showOrder xs)
+  xs → " ORDER BY " <> (joinWith ", " $ map (showOrder showExpr) xs)
 
-showOrder ∷ Tuple Order (Exists Expr) → String
-showOrder (Tuple order e) =
+showOrder ∷ ∀ extra. (∀ a. Expr extra a → String) → Tuple Order (Exists (Expr extra)) → String
+showOrder showExpr (Tuple order e) =
   runExists showExpr e <> " "
     <> case order of
       Asc → "ASC"
@@ -64,22 +64,22 @@ showLimit = case _ of
   Nothing → ""
   Just i → " LIMIT " <> (show $ max 0 i)
 
-showSQL ∷ SQL → String
-showSQL = case _ of
+showSQL ∷ ∀ extra. (∀ a. Expr extra a → String) → SQL extra → String
+showSQL showExpr = case _ of
   FromTable t →
     t.name <> " " <> t.alias
   SubQuery alias state → 
-    "(" <> showState state <> ") " <> alias
+    "(" <> showState showExpr state <> ") " <> alias
 
-sepFor ∷ Source → String
+sepFor ∷ ∀ extra. Source extra → String
 sepFor = case _ of
   Product _ → ", "
   LeftJoin _ _ → " LEFT JOIN "
 
-showSource ∷ Source → String
-showSource = case _ of
-  Product t → showSQL t
-  LeftJoin t e → showSQL t <> " ON (" <> showExpr e <> ")"
+showSource ∷ ∀ extra. (∀ a. Expr extra a → String) → Source extra → String
+showSource showExpr = case _ of
+  Product t → showSQL showExpr t
+  LeftJoin t e → showSQL showExpr t <> " ON (" <> showExpr e <> ")"
 
-showAliasedCol ∷ Tuple Alias (Exists Expr) → String
-showAliasedCol (Tuple alias ee) = runExists showExpr ee <> " AS " <> alias
+showAliasedCol ∷ ∀ extra. (∀ a. Expr extra a → String) → Tuple Alias (Exists (Expr extra)) → String
+showAliasedCol showExpr (Tuple alias ee) = runExists showExpr ee <> " AS " <> alias
